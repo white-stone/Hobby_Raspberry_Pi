@@ -1,7 +1,8 @@
 """ Python script to play wav files based on GPIO signals"""
 
-import pyaudio
-import wave
+#import pyaudio
+#import wave
+import pygame
 import sys
 import threading
 import time
@@ -9,9 +10,10 @@ import random
 import math
 import RPi.GPIO as GPIO
 
-g_chunk       = 1024
+g_chunk       = 1024*1024
+g_animals     = ['monkey','elephant']
 g_gpio_pins   = {'monkey':26,'elephant':20}
-g_switch      = {'monkey':False,'elephant':True}
+g_switch      = {'monkey':False,'elephant':False,'ambience':True}
 
 class GPIOMonitorThread(threading.Thread):
     """ Thread to monitor GPIOs """
@@ -45,51 +47,40 @@ class AnimalVoiceThread(threading.Thread):
         for suffix in range(0,self._num_files):
             self._wavfiles.append('/home/pi/wav/' + animal + '_' + str(suffix) + '.wav')
         print 'Sound file name(s) is/are ' + str(self._wavfiles)
+        self._sound = []
+        for l_wavfile in self._wavfiles:
+            self._sound.append(pygame.mixer.Sound(l_wavfile))
 
     def run(self):
         print '=== Generating animal voice of ' + self._animal + ' ==='
         while True:
+            print 'Loop of ' + self._animal
             if(g_switch[self._animal]):
-                l_wavfile_name = self._wavfiles[int(math.floor((random.random()*self._num_files)))]
-                print 'Playing...: ' + l_wavfile_name
-
-                l_wavfile = wave.open(l_wavfile_name, 'rb')
-                l_pyaudio = pyaudio.PyAudio()
-                l_stream = l_pyaudio.open(
-                    format  = l_pyaudio.get_format_from_width(l_wavfile.getsampwidth()),
-                    channels= l_wavfile.getnchannels(),
-                    rate    = l_wavfile.getframerate(),
-                    output  = True)
-                l_data = l_wavfile.readframes(g_chunk)
-
-                # Making sound
-                while len(l_data) > 0:
-                    l_stream.write(l_data)
-                    l_data = l_wavfile.readframes(g_chunk)
-
-                # Close the device
-                l_stream.stop_stream()
-                l_stream.close()
-                l_pyaudio.terminate()
-
-                g_switch[self._animal] = False
-            
+                l_index   = int(math.floor((random.random()*self._num_files)))                
+                l_channel = self._sound[l_index].play()
+                while (l_channel.get_busy()):
+                    time.sleep(0.1)
+                    print '>'                
+                g_switch[self._animal] = False         
             time.sleep(0.1)
 
 if __name__ == '__main__':
 
+    """ Initialize sound library """
+    pygame.mixer.init()
+    
+    """ Ambience """
+    ambience_sound = AnimalVoiceThread('ambience',1)
+    ambience_sound.start()
+    
     """ Monkey """
     monkey_switch = GPIOMonitorThread('monkey')
     monkey_switch.start()
     monkey_voice   = AnimalVoiceThread('monkey',3)
     monkey_voice.start()
 
-
     """ Elephant """
     elephant_switch = GPIOMonitorThread('elephant')
     elephant_switch.start()
     elephant_voice = AnimalVoiceThread('elephant',2)
     elephant_voice.start()
-
-    while True:
-        time.sleep(60)
